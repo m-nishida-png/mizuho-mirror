@@ -14,15 +14,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download CSV
+- name: Download CSV
         run: |
-          curl -sSL --fail \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+          # Step A: トップページを訪問してCookieを取得
+          curl -sSL -c cookies.txt -A "$UA" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+            -H "Accept-Language: ja,en;q=0.9" \
+            -o /dev/null \
+            https://www.mizuhobank.co.jp/market/historical/index.html
+
+          # Step B: 取得したCookieを使ってCSVを取りに行く（--fail は付けない）
+          HTTP_CODE=$(curl -sSL -w "%{http_code}" -b cookies.txt -A "$UA" \
             -H "Accept: text/csv,text/plain,*/*" \
             -H "Accept-Language: ja,en;q=0.9" \
             -H "Referer: https://www.mizuhobank.co.jp/market/historical/index.html" \
             -o quote.csv \
-            https://www.mizuhobank.co.jp/market/quote.csv
+            https://www.mizuhobank.co.jp/market/quote.csv)
+
+          echo "=========================================="
+          echo "HTTP Status : $HTTP_CODE"
+          echo "File size   : $(wc -c < quote.csv) bytes"
+          echo "----- First 300 bytes of response -----"
+          head -c 300 quote.csv | iconv -f SHIFT_JIS -t UTF-8 2>/dev/null || head -c 300 quote.csv
+          echo ""
+          echo "=========================================="
+
+          # 200以外なら失敗扱いにする
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Fetch failed with status $HTTP_CODE"
+            exit 1
+          fi
 
       - name: Commit if changed
         run: |
